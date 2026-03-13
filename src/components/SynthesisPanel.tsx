@@ -88,7 +88,7 @@ export function SynthesisPanel({ result, onGenerateSynthesis }: SynthesisPanelPr
         {result.key_findings?.length > 0 && (
           <div className="bg-card rounded-lg border border-border p-5 shadow-card animate-fade-in-up animate-delay-1" style={{ opacity: 0 }}>
             <div className="flex items-center gap-2 mb-3">
-              <Lightbulb className="w-4 h-4 text-amber-500" />
+              <Lightbulb className="w-4 h-4 text-accent" />
               <h3 className="text-sm font-bold font-heading text-foreground">Key Findings</h3>
             </div>
             <div className="space-y-3">
