@@ -8,6 +8,7 @@ import { KnowledgeGraph } from '@/components/KnowledgeGraph';
 interface SynthesisPanelProps {
   result: ResearchResult;
   onGenerateSynthesis: () => void;
+  onStartNewResearch?: (newQuery: string) => void;
 }
 
 type FlowStepId =
@@ -119,7 +120,7 @@ function exportToMarkdown(result: ResearchResult) {
   URL.revokeObjectURL(url);
 }
 
-export function SynthesisPanel({ result, onGenerateSynthesis }: SynthesisPanelProps) {
+export function SynthesisPanel({ result, onGenerateSynthesis, onStartNewResearch }: SynthesisPanelProps) {
   const flowSteps = useMemo(
     () => [
       {
@@ -417,9 +418,9 @@ export function SynthesisPanel({ result, onGenerateSynthesis }: SynthesisPanelPr
                 <h3 className="text-sm font-bold font-heading readability-heading">Topic Knowledge Graph</h3>
               </div>
               <p className="text-xs readability-secondary mb-3">
-                Visual map of how papers, findings, gaps, and contradictions interconnect around your query.
+                Visual map of how papers, findings, gaps, and contradictions interconnect around your query. Click on nodes to research them further.
               </p>
-              <KnowledgeGraph result={result} />
+              <KnowledgeGraph result={result} onStartNewResearch={onStartNewResearch} />
             </div>
           </>
         )}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { ResearchResult } from '@/lib/api/research';
+import { researchApi, type ResearchResult } from '@/lib/api/research';
 
 type ChatMessage = {
   id: number;
@@ -216,7 +216,7 @@ function answerAsChat(
 export function QueryConversation({ result, onGenerateSynthesis }: QueryConversationProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [commandInput, setCommandInput] = useState('');
-  const [chatContext, setChatContext] = useState<ChatContext>({});
+  const [isSending, setIsSending] = useState(false);
 
   const intro = useMemo(
     () =>
@@ -227,26 +227,42 @@ export function QueryConversation({ result, onGenerateSynthesis }: QueryConversa
   useEffect(() => {
     setMessages([{ id: Date.now(), role: 'assistant', text: intro }]);
     setCommandInput('');
-    setChatContext({});
   }, [intro, result.job_id]);
 
-  const sendCommand = () => {
+  const sendCommand = async () => {
     const trimmed = commandInput.trim();
-    if (!trimmed) return;
+    if (!trimmed || isSending) return;
 
-    const response = answerAsChat(trimmed, result, chatContext, onGenerateSynthesis);
-    const userMessage: ChatMessage = { id: Date.now(), role: 'user', text: trimmed };
-    const assistantMessage: ChatMessage = {
-      id: Date.now() + 1,
-      role: 'assistant',
-      text: response.text,
-    };
-
-    if (response.contextUpdate) {
-      setChatContext((prev) => ({ ...prev, ...response.contextUpdate }));
+    // Trigger synthesis locally if asked
+    if (/(generate|create|make).*(synthesis|summary)|(synthesis|summary).*(generate|create|make)/.test(trimmed.toLowerCase())) {
+      if (!result.synthesis) {
+        onGenerateSynthesis();
+      }
     }
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+
+    const userMessage: ChatMessage = { id: Date.now(), role: 'user', text: trimmed };
+    setMessages((prev) => [...prev, userMessage]);
     setCommandInput('');
+    setIsSending(true);
+
+    try {
+      const chatHistory = messages
+        .filter(m => m.id !== messages[0].id) // omit intro
+        .map(m => ({ role: m.role, text: m.text }));
+      
+      const response = await researchApi.sendChatMessage(result.job_id, trimmed, chatHistory);
+      
+      const assistantMessage: ChatMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        text: response.text,
+      };
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+       setMessages((prev) => [...prev, { id: Date.now() + 1, role: 'assistant', text: 'Sorry, I encountered an error communicating with the agent server.' }]);
+    } finally {
+       setIsSending(false);
+    }
   };
 
   return (
@@ -287,9 +303,9 @@ export function QueryConversation({ result, onGenerateSynthesis }: QueryConversa
           placeholder="Ask anything... e.g. How do I use this page? | generate synthesis | top priorities"
           className="h-10 text-sm bg-secondary/70"
         />
-        <Button onClick={sendCommand} className="h-10 px-4 gap-1.5" disabled={!commandInput.trim()}>
+        <Button onClick={sendCommand} className="h-10 px-4 gap-1.5" disabled={!commandInput.trim() || isSending}>
           <Send className="w-3.5 h-3.5" />
-          Send
+          {isSending ? 'Sending...' : 'Send'}
         </Button>
       </div>
     </div>

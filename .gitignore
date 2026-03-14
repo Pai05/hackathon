@@ -28,3 +28,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Chroma DB vector store (large binary data, keep local only)
+chroma_db/
+
+# Test artifacts
+playwright-report/
+test-results/

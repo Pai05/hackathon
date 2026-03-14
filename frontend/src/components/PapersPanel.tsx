@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react';
-import { Download, ExternalLink, Search, X, BookOpen, Calendar, Users, Tag } from 'lucide-react';
+import { Download, ExternalLink, Search, X, BookOpen, Calendar, Users, Tag, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ResearchPaper } from '@/lib/api/research';
+import { researchApi } from '@/lib/api/research';
 
 interface PapersPanelProps {
   papers: ResearchPaper[];
   query: string;
+  onStartNewResearch?: (newQuery: string) => void;
 }
 
 function databaseFromUrl(url?: string) {
@@ -26,9 +28,10 @@ const DB_COLORS: Record<string, string> = {
   'Academic Source': 'text-primary border-primary/30 bg-primary/10',
 };
 
-function PaperModal({ paper, onClose }: { paper: ResearchPaper; onClose: () => void }) {
-  const db = databaseFromUrl(paper.url);
+function PaperModal({ paper, onClose, onStartNewResearch }: { paper: ResearchPaper; onClose: () => void; onStartNewResearch?: (newQuery: string) => void }) {
+  const db = paper.source || 'Academic Source';
   const colorClass = DB_COLORS[db] || DB_COLORS['Academic Source'];
+  const [isFindingSimilar, setIsFindingSimilar] = useState(false);
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
@@ -49,8 +52,13 @@ function PaperModal({ paper, onClose }: { paper: ResearchPaper; onClose: () => v
           <X className="w-5 h-5" />
         </button>
 
-        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs border font-semibold mb-4 ${colorClass}`}>
-          {db}
+        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs border font-semibold mb-4 gap-2">
+          {paper.ref !== undefined && (
+            <span className="text-cyan-400 border-cyan-400/30 bg-cyan-400/10 border rounded-full px-2 py-0.5 text-xs font-bold">
+              [{paper.ref}]
+            </span>
+          )}
+          <span className={colorClass}>{db}</span>
         </div>
 
         <h2 className="text-lg font-bold font-heading text-foreground leading-snug mb-4 pr-6">
@@ -86,6 +94,15 @@ function PaperModal({ paper, onClose }: { paper: ResearchPaper; onClose: () => v
               <p className="text-xs text-foreground mt-0.5">{db}</p>
             </div>
           </div>
+          {paper.doi && (
+            <div className="flex items-start gap-2 rounded-lg bg-secondary/40 p-3 sm:col-span-2">
+              <ExternalLink className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">DOI</p>
+                <a href={`https://doi.org/${paper.doi}`} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:underline mt-0.5 break-all">{paper.doi}</a>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-border bg-background/50 p-4 mb-4">
@@ -100,33 +117,68 @@ function PaperModal({ paper, onClose }: { paper: ResearchPaper; onClose: () => v
           </div>
         )}
 
-        {paper.url && (
-          <a href={paper.url} target="_blank" rel="noopener noreferrer">
-            <Button className="w-full gap-2 gradient-primary text-primary-foreground font-semibold">
-              <Download className="w-4 h-4" />
-              Open / Download Paper
-              <ExternalLink className="w-3.5 h-3.5" />
+        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          {paper.url && (
+            <a href={paper.url} target="_blank" rel="noopener noreferrer" className="flex-1">
+              <Button className="w-full gap-2 gradient-primary text-primary-foreground font-semibold">
+                <Download className="w-4 h-4" />
+                Open / Download Paper
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Button>
+            </a>
+          )}
+          {onStartNewResearch && (
+            <Button 
+              variant="outline" 
+              className="flex-1 gap-2 font-semibold"
+              disabled={isFindingSimilar}
+              onClick={async () => {
+                setIsFindingSimilar(true);
+                try {
+                  // Extract keywords from the paper using Gemini for targeted similarity search
+                  const { keywords } = await researchApi.extractKeywords({
+                    title: paper.title,
+                    abstract: paper.abstract,
+                    key_findings: paper.key_findings,
+                  });
+                  const keywordQuery = keywords.length > 0
+                    ? keywords.slice(0, 7).join(' ')
+                    : paper.title;
+                  onClose();
+                  onStartNewResearch(keywordQuery);
+                } catch {
+                  // On error, fall back to using the title
+                  onClose();
+                  onStartNewResearch(`Find papers similar to: ${paper.title}`);
+                } finally {
+                  setIsFindingSimilar(false);
+                }
+              }}
+            >
+              {isFindingSimilar 
+                ? <><Loader2 className="w-4 h-4 animate-spin" />Extracting keywords...</>
+                : <><Search className="w-4 h-4 text-primary" />Find More Like This</>}
             </Button>
-          </a>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-export function PapersPanel({ papers, query }: PapersPanelProps) {
+export function PapersPanel({ papers, query, onStartNewResearch }: PapersPanelProps) {
   const [search, setSearch] = useState('');
   const [activeDb, setActiveDb] = useState<string>('All');
   const [selectedPaper, setSelectedPaper] = useState<ResearchPaper | null>(null);
 
   const databases = useMemo(() => {
-    const dbs = new Set(papers.map((p) => databaseFromUrl(p.url)));
+    const dbs = new Set(papers.map((p) => p.source || 'Academic Source'));
     return ['All', ...Array.from(dbs)];
   }, [papers]);
 
   const filtered = useMemo(() => {
     return papers.filter((p) => {
-      const matchDb = activeDb === 'All' || databaseFromUrl(p.url) === activeDb;
+      const matchDb = activeDb === 'All' || (p.source || 'Academic Source') === activeDb;
       const matchSearch =
         !search.trim() ||
         p.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -138,7 +190,7 @@ export function PapersPanel({ papers, query }: PapersPanelProps) {
   return (
     <>
       {selectedPaper && (
-        <PaperModal paper={selectedPaper} onClose={() => setSelectedPaper(null)} />
+        <PaperModal paper={selectedPaper} onClose={() => setSelectedPaper(null)} onStartNewResearch={onStartNewResearch} />
       )}
 
       <div className="h-full flex flex-col">
@@ -202,16 +254,21 @@ export function PapersPanel({ papers, query }: PapersPanelProps) {
             </div>
           )}
           {filtered.map((paper, idx) => {
-            const db = databaseFromUrl(paper.url);
+            const db = paper.source || 'Academic Source';
             const colorClass = DB_COLORS[db] || DB_COLORS['Academic Source'];
             return (
               <div
-                key={idx}
+                key={paper.ref ?? idx}
                 onClick={() => setSelectedPaper(paper)}
                 className="glass-panel rounded-lg p-4 hover:shadow-elevated transition-all duration-200 cursor-pointer group animate-fade-in-up"
               >
-                <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] border mb-2 font-semibold ${colorClass}`}>
-                  {db}
+                <div className="flex items-center gap-2 mb-2">
+                  {paper.ref !== undefined && (
+                    <span className="text-[10px] font-bold text-cyan-400 border border-cyan-400/30 bg-cyan-400/10 rounded-full px-2 py-0.5 shrink-0">[{paper.ref}]</span>
+                  )}
+                  <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] border font-semibold ${colorClass}`}>
+                    {db}
+                  </div>
                 </div>
                 <h3 className="text-sm font-semibold font-heading text-foreground group-hover:text-primary transition-colors leading-snug mb-1.5">
                   {paper.title}

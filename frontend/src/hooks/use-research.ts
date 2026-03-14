@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { researchApi, type ResearchResult } from '@/lib/api/research';
 import { buildMockResearchResult, buildMockSynthesis } from '@/lib/mock-data';
+import { useAuth } from '@/lib/auth-context';
 
-const USE_DEMO = !import.meta.env.VITE_API_URL && true; // Auto-demo when no backend configured
-const HISTORY_KEY = 'research_recent_insights';
-const HISTORY_LIMIT = 12;
+const USE_DEMO = !import.meta.env.VITE_API_URL && true;
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export interface ResearchHistoryItem {
   id: string;
@@ -14,6 +14,7 @@ export interface ResearchHistoryItem {
 }
 
 export function useResearch() {
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<ResearchResult | null>(null);
@@ -21,20 +22,29 @@ export function useResearch() {
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
-  const [history, setHistory] = useState<ResearchHistoryItem[]>(() => {
-    const stored = localStorage.getItem(HISTORY_KEY);
-    if (!stored) return [];
-    try {
-      return JSON.parse(stored) as ResearchHistoryItem[];
-    } catch {
-      return [];
-    }
-  });
+  const [history, setHistory] = useState<ResearchHistoryItem[]>([]);
   const lastSavedSignature = useRef<string | null>(null);
+
+  // Fetch history on mount / user change
+  useEffect(() => {
+    if (!user?.id) {
+      setHistory([]);
+      return;
+    }
+    
+    fetch(`${BASE_URL}/api/history?userId=${user.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.history) {
+          setHistory(data.history);
+        }
+      })
+      .catch(err => console.error("Failed to fetch history:", err));
+  }, [user]);
 
   const persistHistory = useCallback((items: ResearchHistoryItem[]) => {
     setHistory(items);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+    // Let backend handle persistence, we just update local state instantly
   }, []);
 
   const startResearch = useCallback(async (q: string) => {
@@ -52,9 +62,10 @@ export function useResearch() {
       return;
     } catch {
       // Backend unreachable — fall back to demo mode
+      console.log("Falling back to demo mode...");
     }
 
-    // Demo mode: simulate pipeline stages
+    // Demo mode
     setDemoMode(true);
     const demoResult = buildMockResearchResult(q);
     const stages: ResearchResult['status'][] = ['pending', 'running'];
@@ -62,7 +73,6 @@ export function useResearch() {
       setResult({ ...demoResult, status, papers: [], key_findings: [], contradictions: [], research_gaps: [] });
       await new Promise(r => setTimeout(r, 1200));
     }
-    // Complete with mock data
     setResult(demoResult);
     setIsLoading(false);
   }, []);
@@ -82,7 +92,7 @@ export function useResearch() {
           }
         }
       } catch {
-        // Keep polling on transient errors
+        // Keep polling
       }
     }, 2000);
 
@@ -126,7 +136,7 @@ export function useResearch() {
   }, [history]);
 
   useEffect(() => {
-    if (!result || result.status !== 'completed' || !result.papers?.length) return;
+    if (!result || result.status !== 'completed' || !result.papers?.length || !user?.id) return;
 
     const signature = `${result.job_id}|${result.query}|${result.papers.length}`;
     if (signature === lastSavedSignature.current) return;
@@ -141,10 +151,18 @@ export function useResearch() {
 
     const updated = [entry, ...history]
       .filter((item, index, arr) => arr.findIndex((x) => x.query === item.query) === index)
-      .slice(0, HISTORY_LIMIT);
+      .slice(0, 12);
 
     persistHistory(updated);
-  }, [result, history, persistHistory]);
+
+    // Save to backend
+    fetch(`${BASE_URL}/api/history`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, query: result.query, result: result })
+    }).catch(err => console.error("Failed to save history to backend:", err));
+
+  }, [result, history, persistHistory, user?.id]);
 
   return {
     query,

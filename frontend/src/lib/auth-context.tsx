@@ -18,11 +18,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const BASE_URL = import.meta.env.VITE_AUTH_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
-
-function devOtpKey(email: string, purpose: 'register' | 'login') {
-  return `research_dev_otp_${email.trim().toLowerCase()}_${purpose}`;
-}
+const BASE_URL = import.meta.env.VITE_AUTH_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -34,33 +30,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) throw new Error('Email is required');
 
-    try {
-      const res = await fetch(`${BASE_URL}/api/auth/request-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, purpose }),
-      });
+    const res = await fetch(`${BASE_URL}/api/auth/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, purpose }),
+    });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
 
-      if (data.dev_otp) {
-        localStorage.setItem(devOtpKey(normalizedEmail, purpose), data.dev_otp);
-      }
-
-      return {
-        message: data.message || 'OTP sent successfully',
-        devOtp: data.dev_otp,
-      };
-    } catch (error) {
-      // Demo fallback if auth backend is not reachable.
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
-      localStorage.setItem(devOtpKey(normalizedEmail, purpose), otp);
-      return {
-        message: 'Using demo OTP mode (backend unavailable).',
-        devOtp: otp,
-      };
-    }
+    return {
+      message: data.message || 'OTP sent successfully',
+      devOtp: data.dev_otp,
+    };
   }, []);
 
   const verifyOtp = useCallback(async (email: string, otp: string, purpose: 'register' | 'login') => {
@@ -68,61 +50,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanedOtp = otp.trim();
     if (!normalizedEmail || !cleanedOtp) throw new Error('Email and OTP are required');
 
-    try {
-      const res = await fetch(`${BASE_URL}/api/auth/verify-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, otp: cleanedOtp, purpose }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'OTP verification failed');
-      return;
-    } catch {
-      // Demo fallback verification when backend is unavailable.
-      const expected = localStorage.getItem(devOtpKey(normalizedEmail, purpose));
-      if (!expected || expected !== cleanedOtp) {
-        throw new Error('Invalid OTP');
-      }
-      localStorage.removeItem(devOtpKey(normalizedEmail, purpose));
-    }
+    const res = await fetch(`${BASE_URL}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, otp: cleanedOtp, purpose }),
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'OTP verification failed');
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    try {
-      const res = await fetch(`${BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!res.ok) throw new Error('Invalid credentials');
-      const data = await res.json();
-      setUser(data.user);
-      localStorage.setItem('research_user', JSON.stringify(data.user));
-    } catch {
-      // Demo fallback: allow login without backend
-      const demoUser = { id: '1', name: email.split('@')[0], email };
-      setUser(demoUser);
-      localStorage.setItem('research_user', JSON.stringify(demoUser));
-    }
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Invalid credentials');
+    
+    setUser(data.user);
+    localStorage.setItem('research_user', JSON.stringify(data.user));
   }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    try {
-      const res = await fetch(`${BASE_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      });
-      if (!res.ok) throw new Error('Registration failed');
-      const data = await res.json();
-      setUser(data.user);
-      localStorage.setItem('research_user', JSON.stringify(data.user));
-    } catch {
-      // Demo fallback
-      const demoUser = { id: '1', name, email };
-      setUser(demoUser);
-      localStorage.setItem('research_user', JSON.stringify(demoUser));
-    }
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    
+    setUser(data.user);
+    localStorage.setItem('research_user', JSON.stringify(data.user));
   }, []);
 
   const logout = useCallback(() => {

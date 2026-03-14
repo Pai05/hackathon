@@ -334,10 +334,10 @@ const Index = () => {
       {hasResults && (
         <div className="flex h-screen pt-14">
           <div className="w-[30%] border-r border-border bg-card/70 backdrop-blur-xl overflow-hidden flex flex-col">
-            <PapersPanel papers={result.papers} query={query} />
+            <PapersPanel papers={result.papers} query={query} onStartNewResearch={startResearch} />
           </div>
           <div className="w-[70%] bg-background/40 overflow-hidden flex flex-col">
-            <SynthesisPanel result={result} onGenerateSynthesis={generateSynthesis} />
+            <SynthesisPanel result={result} onGenerateSynthesis={generateSynthesis} onStartNewResearch={startResearch} />
           </div>
         </div>
       )}

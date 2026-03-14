@@ -291,7 +291,7 @@ function curvedPath(from: GraphNode, to: GraphNode, curvature = 0.18) {
   return `M ${from.x} ${from.y} Q ${cx} ${cy} ${to.x} ${to.y}`;
 }
 
-export function KnowledgeGraph({ result }: { result: ResearchResult }) {
+export function KnowledgeGraph({ result, onStartNewResearch }: { result: ResearchResult; onStartNewResearch?: (newQuery: string) => void }) {
   const graph = useMemo(() => buildGraph(result), [result]);
   const nodesById = useMemo(() => {
     const map = new Map<string, GraphNode>();
@@ -397,8 +397,19 @@ export function KnowledgeGraph({ result }: { result: ResearchResult }) {
             const subY = node.y + visual.radius - 12;
 
             return (
-              <g key={node.id}>
-                <title>{node.fullLabel}</title>
+              <g 
+                key={node.id} 
+                onClick={() => {
+                  if (onStartNewResearch && node.kind !== 'topic' && node.kind !== 'paper') {
+                    // Include the kind ('finding', 'gap', 'contradiction') for better normalization context
+                    const nodeKindLabel = node.kind === 'finding' ? 'key finding' : node.kind === 'gap' ? 'research gap' : 'contradiction';
+                    onStartNewResearch(`Research into: ${nodeKindLabel} - ${node.fullLabel}`);
+                  }
+                }}
+                style={{ cursor: onStartNewResearch && node.kind !== 'topic' && node.kind !== 'paper' ? 'pointer' : 'default' }}
+                className={onStartNewResearch && node.kind !== 'topic' && node.kind !== 'paper' ? 'hover:scale-[1.02] origin-center transition-transform' : ''}
+              >
+                <title>{node.fullLabel}{onStartNewResearch && node.kind !== 'topic' && node.kind !== 'paper' ? ' (Click to research)' : ''}</title>
                 <circle
                   cx={node.x}
                   cy={node.y}
